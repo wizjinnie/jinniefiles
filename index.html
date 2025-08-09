@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급식 정보 알리미</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .date-picker-container {
+            margin-bottom: 20px;
+        }
+        label {
+            font-size: 1.1em;
+            color: #555;
+        }
+        input[type="date"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            margin-top: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #meal-info {
+            margin-top: 20px;
+            text-align: left;
+            padding: 15px;
+            border-top: 1px solid #eee;
+        }
+        .meal-type {
+            margin-bottom: 15px;
+        }
+        .meal-type h3 {
+            color: #007bff;
+            margin-bottom: 5px;
+            border-left: 4px solid #007bff;
+            padding-left: 8px;
+        }
+        .meal-type p {
+            padding-left: 12px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .loading, .error {
+            margin-top: 20px;
+            font-size: 1.1em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>오늘의 급식</h1>
+        <div class="date-picker-container">
+            <label for="meal-date">날짜 선택: </label>
+            <input type="date" id="meal-date">
+        </div>
+        <button onclick="fetchMealData()">급식 정보 불러오기</button>
+        <div id="meal-info"></div>
+    </div>
+
+    <script>
+        // 페이지 로드 시 오늘 날짜로 기본 설정
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('meal-date').value = `${yyyy}-${mm}-${dd}`;
+        });
+
+        async function fetchMealData() {
+            const mealInfoDiv = document.getElementById('meal-info');
+            mealInfoDiv.innerHTML = '<p class="loading">급식 정보를 불러오는 중입니다...</p>';
+
+            const selectedDate = document.getElementById('meal-date').value.replace(/-/g, '');
+            if (!selectedDate) {
+                mealInfoDiv.innerHTML = '<p class="error">날짜를 선택해주세요.</p>';
+                return;
+            }
+
+            // 본인의 나이스 교육정보 개방포털 API 키를 입력하세요.
+            const apiKey = 'YOUR_API_KEY';
+            if (apiKey === 'YOUR_API_KEY') {
+                mealInfoDiv.innerHTML = '<p class="error">API 키를 입력해주세요. 코드를 수정해야 합니다.</p>';
+                return;
+            }
+
+            const atptCode = 'J10'; // 예: 서울특별시교육청
+            const schoolCode = '7530221'; // 예: 가락고등학교 (실제 학교 코드로 변경 필요)
+
+            const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${apiKey}&Type=xml&ATPT_OFCDC_SC_CODE=${atptCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${selectedDate}`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('네트워크 응답에 문제가 있습니다.');
+                }
+                const xmlString = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+
+                const result = xmlDoc.getElementsByTagName('RESULT')[0];
+                if (result) {
+                    const code = result.getElementsByTagName('CODE')[0].textContent;
+                    if (code === 'INFO-200') {
+                        mealInfoDiv.innerHTML = '<p class="error">해당 날짜의 급식 정보가 없습니다.</p>';
+                        return;
+                    } else if (code !== 'INFO-000') {
+                        const message = result.getElementsByTagName('MESSAGE')[0].textContent;
+                        throw new Error(message);
+                    }
+                }
+
+
+                const mealRows = xmlDoc.getElementsByTagName('row');
+                if (mealRows.length === 0) {
+                     mealInfoDiv.innerHTML = '<p class="error">해당 날짜의 급식 정보가 없습니다.</p>';
+                     return;
+                }
+
+                let mealHTML = '';
+                for (let i = 0; i < mealRows.length; i++) {
+                    const row = mealRows[i];
+                    const mealType = row.getElementsByTagName('MMEAL_SC_NM')[0].textContent;
+                    const mealContent = row.getElementsByTagName('DDISH_SCDC')[0].textContent.replace(/<br\/>/g, '\n');
+
+                    mealHTML += `
+                        <div class="meal-type">
+                            <h3>${mealType}</h3>
+                            <p>${mealContent.split('\n').join('<br>')}</p>
+                        </div>
+                    `;
+                }
+                mealInfoDiv.innerHTML = mealHTML;
+
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                mealInfoDiv.innerHTML = `<p class="error">정보를 불러오는 데 실패했습니다: ${error.message}</p>`;
+            }
+        }
+    </script>
+
+</body>
+</html>
